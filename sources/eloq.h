@@ -10,6 +10,8 @@
 #define FOREGROUND_COLOR Color{120, 100, 100, 255}
 #define FOREGROUND_ACTIVE_COLOR Color{220, 200, 200, 255}
 #define PLAYER_GLYPH Vector2i{0, 4}
+#define NPC_GLYPH Vector2i{1, 0}
+#define MAX_ENTITY_COUNT 1024
 
 struct Vector2i
 {
@@ -25,12 +27,27 @@ struct Tile
     bool blocksMovement;
 };
 
+struct Entity
+{
+    Vector2i pos;
+    Vector2i glyphCoord;
+    Color bgColor;
+    Color fgColor;
+    bool blocksMovement;
+    bool isPlayerControlled;
+};
+
 struct GameState
 {
     Texture2D cursesAtlas;
-    Vector2i playerPosition;
     Tile* tiles;
     Vector2i mapSize;
+    Entity *entities;
+    int entityCount;
+    int maxEntityCount;
+    int currentTurn;
+    int pendingEntityI;
+    bool pendingEntityProcessed;
 };
 
 void init(GameState *gs);

@@ -1,8 +1,10 @@
 #include "eloq.h"
+#include "raylib.h"
 
 #include <cstdlib>
 
 #define ATLAS_PATH "assets/curses.png"
+#define PLAYER_ENTITY_I 0
 
 const Vector2 atlasTileDim{ 24.0f, 36.0f };
 const int atlasCols{ 16 };
@@ -116,9 +118,10 @@ inline bool isKeyPressedOrRepeat(int key)
     return IsKeyPressed(key) || IsKeyPressedRepeat(key);
 }
 
-bool checkPlayerMovement(GameState *gs)
+bool checkEntityMovement(GameState *gs, Entity *entity)
 {
-    Vector2i testPosition = gs->playerPosition;
+    // Vector2i testPosition = gs->entities[PLAYER_ENTITY_I].pos;
+    Vector2i testPosition = entity->pos;
     bool moveRequested = false;
 
     if (isKeyPressedOrRepeat(KEY_A))
@@ -146,12 +149,64 @@ bool checkPlayerMovement(GameState *gs)
     {
         if (checkCanWalk(gs, gs->tiles, testPosition))
         {
-            gs->playerPosition = testPosition;
+            entity->pos = testPosition;
             return true;
         }
     }
 
     return false;
+}
+
+void processEntityTurns(GameState *gs)
+{
+    if (!gs->pendingEntityProcessed)
+    {
+        if (checkEntityMovement(gs, &gs->entities[gs->pendingEntityI]))
+        {
+            gs->pendingEntityProcessed = true;
+        }
+    }
+
+    if (gs->pendingEntityProcessed)
+    {
+        int startI = gs->pendingEntityI + 1;
+        if (startI >= gs->entityCount - 1)
+        {
+            startI = 0;
+            gs->currentTurn++;
+        }
+
+        gs->pendingEntityI = -1;
+        
+        for (int i = startI; i < gs->entityCount; i++)
+        {
+            Entity *entity = &gs->entities[i];
+            if (entity->isPlayerControlled)
+            {
+                gs->pendingEntityI = i;
+                gs->pendingEntityProcessed = false;
+                return;
+            }
+            else
+            {
+                Vector2i randomMove = Vector2i{ GetRandomValue(-1, 1), 0 };
+                if (randomMove.x == 0)
+                {
+                    randomMove.y = GetRandomValue(-1, 1);
+                }
+
+                if (randomMove.x != 0 || randomMove.y != 0)
+                {
+                    Vector2i testPosition{ entity->pos.x + randomMove.x, entity->pos.y + randomMove.y };
+                    if (checkCanWalk(gs, gs->tiles, testPosition))
+                    {
+                        entity->pos = testPosition;
+                    }
+                }
+            }
+        }
+    }
+
 }
 
 Rectangle getAtlasRect(Vector2i coord)
@@ -183,12 +238,42 @@ void init(GameState *gs)
     int tileCount = gs->mapSize.x * gs->mapSize.y;
     gs->tiles = (Tile*)malloc(tileCount * sizeof(Tile));
     generateMap(gs->tiles, gs->mapSize.x, gs->mapSize.y);
-    gs->playerPosition = Vector2i{ gs->mapSize.x / 2, gs->mapSize.y / 2 };
+
+    gs->maxEntityCount = MAX_ENTITY_COUNT;
+    gs->entities = (Entity*)malloc(gs->maxEntityCount * sizeof(Entity));
+    gs->entityCount = 3;
+    gs->entities[0] = Entity{
+        Vector2i{ gs->mapSize.x / 2, gs->mapSize.y / 2 },
+        PLAYER_GLYPH,
+        BACKGROUND_COLOR,
+        FOREGROUND_ACTIVE_COLOR,
+        true,
+        true
+    };
+    gs->entities[1] = Entity{
+        Vector2i{ gs->mapSize.x / 2 + 2, gs->mapSize.y / 2 },
+        PLAYER_GLYPH,
+        BACKGROUND_COLOR,
+        RED,
+        true,
+        true
+    };
+    gs->entities[2] = Entity{
+        Vector2i{ gs->mapSize.x / 2 + 4, gs->mapSize.y / 2 },
+        NPC_GLYPH,
+        BACKGROUND_COLOR,
+        GREEN,
+        true,
+        false
+    };
+
+    gs->pendingEntityI = -1;
+    gs->pendingEntityProcessed = true;
 }
 
 void update(GameState *gs)
 {
-    checkPlayerMovement(gs);
+    processEntityTurns(gs);
 
     BeginDrawing();
 
@@ -203,7 +288,14 @@ void update(GameState *gs)
             }
         }
 
-        drawGlyph(gs, gs->playerPosition, PLAYER_GLYPH, BACKGROUND_COLOR, FOREGROUND_ACTIVE_COLOR);
+        for (int i = 0; i < gs->entityCount; i++)
+        {
+            Entity *entity = &gs->entities[i];
+            drawGlyph(gs, entity->pos, entity->glyphCoord, entity->bgColor, entity->fgColor);
+        }
+
+        float width = GetScreenWidth();
+        DrawText(TextFormat("Turn: %d", gs->currentTurn), width - 100, 10, 24, FOREGROUND_COLOR);
 
     EndDrawing();
 }
