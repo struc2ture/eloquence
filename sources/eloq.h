@@ -1,11 +1,14 @@
 #pragma once
 
+#include <cstdint>
+
 #include <raylib.h>
 
 #define ARRAY_COUNT(array) (sizeof((array))/sizeof((array)[0]))
 
 #define GROUND_GLYPH Vector2i{14, 2}
 #define WALL_GLYPH Vector2i{3, 2}
+#define HERB_GLYPH Vector2i{10, 2}
 #define BACKGROUND_COLOR Color{30, 20, 20, 255}
 #define FOREGROUND_COLOR Color{120, 100, 100, 255}
 #define FOREGROUND_ACTIVE_COLOR Color{220, 200, 200, 255}
@@ -27,6 +30,7 @@ struct Tile
     bool blocksMovement;
 };
 
+#define ENTITY_NAME_SIZE 256
 struct Entity
 {
     Vector2i pos;
@@ -35,6 +39,15 @@ struct Entity
     Color fgColor;
     bool blocksMovement;
     bool isPlayerControlled;
+    bool isActive;
+    bool isVisible;
+    bool canPickUp;
+    int drawLayer;
+    char name[ENTITY_NAME_SIZE];
+
+    uint32_t nextEntity;
+    uint32_t parentEntity;
+    uint32_t firstInventoryItem;
 };
 
 struct GameState
@@ -46,8 +59,15 @@ struct GameState
     int entityCount;
     int maxEntityCount;
     int currentTurn;
-    int pendingEntityI;
+    uint32_t pendingEntityI;
     bool pendingEntityProcessed;
+};
+
+#define MAX_ENTITY_SEARCH_COUNT 256
+struct EntitySearchResult
+{
+    Entity *entities[MAX_ENTITY_SEARCH_COUNT];
+    int count;
 };
 
 void init(GameState *gs);

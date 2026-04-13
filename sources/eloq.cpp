@@ -1,7 +1,9 @@
 #include "eloq.h"
 #include "raylib.h"
 
+#include <assert.h>
 #include <cstdlib>
+#include <cstdio>
 
 #define ATLAS_PATH "assets/curses.png"
 #define PLAYER_ENTITY_I 0
@@ -33,6 +35,12 @@ const Color colors[] = {
 };
 const Vector2i defaultMapSize{ 30, 15 };
 
+void pushEntity(GameState *gs, Entity entity)
+{
+    assert(gs->entityCount < gs->maxEntityCount);
+    gs->entities[gs->entityCount++] = entity;
+}
+
 void generateRandomTiles(Tile *tiles, int tileCount)
 {
     for (int i = 0; i < tileCount; i++)
@@ -46,7 +54,7 @@ void generateRandomTiles(Tile *tiles, int tileCount)
     }
 }
 
-void generateMap(Tile *tiles, int width, int height)
+void generateMap(GameState *gs, Tile *tiles, int width, int height)
 {
     for (int x = 0; x < width; x++)
     {
@@ -98,18 +106,62 @@ void generateMap(Tile *tiles, int width, int height)
             true
         };
     }
+
+    int maxHerbsCount = 1;
+    for (int i = 0; i < maxHerbsCount; i++)
+    {
+        pushEntity(gs, Entity{
+            Vector2i{ GetRandomValue(1, width - 2), GetRandomValue(1, height - 2) },
+            HERB_GLYPH,
+            BACKGROUND_COLOR,
+            GREEN,
+            false,
+            false,
+            false,
+            true,
+            true,
+            3,
+            "Jibrus"
+        });
+    }
 }
 
-bool checkValidPosition(GameState *gs, Vector2i p)
+inline bool checkValidPosition(GameState *gs, Vector2i p)
 {
     bool valid = (p.x >= 0 && p.x < gs->mapSize.x &&
                   p.y >= 0 && p.y < gs->mapSize.y);
     return valid;
 }
 
-bool checkCanWalk(GameState *gs, Tile *tiles, Vector2i p)
+inline bool checkTileWalkable(GameState *gs, Tile *tiles, Vector2i p)
 {
-    bool canWalk = checkValidPosition(gs, p) && !tiles[p.y * gs->mapSize.x + p.x].blocksMovement;
+    return !tiles[p.y * gs->mapSize.x + p.x].blocksMovement;
+}
+
+inline bool v2iEqual(Vector2i a, Vector2i b)
+{
+    return a.x == b.x && a.y == b.y;
+}
+
+bool checkEntitiesWalkable(GameState *gs, Vector2i p)
+{
+    for (uint32_t entityI = 1; entityI < gs->entityCount; entityI++)
+    {
+        Entity *entity = &gs->entities[entityI];
+        if (entity->isActive && entity->blocksMovement && v2iEqual(entity->pos, p))
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
+inline bool checkCanWalk(GameState *gs, Tile *tiles, Vector2i p)
+{
+    bool canWalk = (checkValidPosition(gs, p) &&
+                    checkTileWalkable(gs, tiles, p) &&
+                    checkEntitiesWalkable(gs, p));
     return canWalk;
 }
 
@@ -120,7 +172,6 @@ inline bool isKeyPressedOrRepeat(int key)
 
 bool checkEntityMovement(GameState *gs, Entity *entity)
 {
-    // Vector2i testPosition = gs->entities[PLAYER_ENTITY_I].pos;
     Vector2i testPosition = entity->pos;
     bool moveRequested = false;
 
@@ -169,44 +220,50 @@ void processEntityTurns(GameState *gs)
 
     if (gs->pendingEntityProcessed)
     {
-        int startI = gs->pendingEntityI + 1;
+        uint32_t startI = gs->pendingEntityI + 1;
         if (startI >= gs->entityCount - 1)
         {
             startI = 0;
+            // update turn counter if pending entity was the last entity in the list
             gs->currentTurn++;
         }
 
-        gs->pendingEntityI = -1;
+        gs->pendingEntityI = 0;
         
-        for (int i = startI; i < gs->entityCount; i++)
+        for (uint32_t i = startI; i < gs->entityCount; i++)
         {
             Entity *entity = &gs->entities[i];
-            if (entity->isPlayerControlled)
+            if (entity->isActive)
             {
-                gs->pendingEntityI = i;
-                gs->pendingEntityProcessed = false;
-                return;
-            }
-            else
-            {
-                Vector2i randomMove = Vector2i{ GetRandomValue(-1, 1), 0 };
-                if (randomMove.x == 0)
+                if (entity->isPlayerControlled)
                 {
-                    randomMove.y = GetRandomValue(-1, 1);
+                    gs->pendingEntityI = i;
+                    gs->pendingEntityProcessed = false;
+                    return;
                 }
-
-                if (randomMove.x != 0 || randomMove.y != 0)
+                else
                 {
-                    Vector2i testPosition{ entity->pos.x + randomMove.x, entity->pos.y + randomMove.y };
-                    if (checkCanWalk(gs, gs->tiles, testPosition))
+                    Vector2i randomMove = Vector2i{ GetRandomValue(-1, 1), 0 };
+                    if (randomMove.x == 0)
                     {
-                        entity->pos = testPosition;
+                        randomMove.y = GetRandomValue(-1, 1);
+                    }
+
+                    if (randomMove.x != 0 || randomMove.y != 0)
+                    {
+                        Vector2i testPosition{ entity->pos.x + randomMove.x, entity->pos.y + randomMove.y };
+                        if (checkCanWalk(gs, gs->tiles, testPosition))
+                        {
+                            entity->pos = testPosition;
+                        }
                     }
                 }
             }
         }
-    }
 
+        // if there was a pending entity, there's an early return.
+        gs->currentTurn++;
+    }
 }
 
 Rectangle getAtlasRect(Vector2i coord)
@@ -231,48 +288,101 @@ void drawGlyph(GameState *gs, Vector2i coord, Vector2i glyphCoord, Color bgColor
     DrawTextureRec(gs->cursesAtlas, getAtlasRect(glyphCoord), pos, fgColor);
 }
 
+EntitySearchResult getEntitiesAtPos(GameState *gs, Vector2i pos)
+{
+    EntitySearchResult result;
+    result.count = 0;
+    for (uint32_t i = 1; i < gs->entityCount; i++)
+    {
+        if (v2iEqual(gs->entities[i].pos, pos))
+        {
+            result.entities[result.count++] = &gs->entities[i];
+        }
+    }
+    return result;
+}
+
 void init(GameState *gs)
 {
     gs->cursesAtlas = LoadTexture(ATLAS_PATH);
     gs->mapSize = defaultMapSize;
     int tileCount = gs->mapSize.x * gs->mapSize.y;
     gs->tiles = (Tile*)malloc(tileCount * sizeof(Tile));
-    generateMap(gs->tiles, gs->mapSize.x, gs->mapSize.y);
-
     gs->maxEntityCount = MAX_ENTITY_COUNT;
+
     gs->entities = (Entity*)malloc(gs->maxEntityCount * sizeof(Entity));
-    gs->entityCount = 3;
-    gs->entities[0] = Entity{
+    pushEntity(gs, Entity{});
+    pushEntity(gs, Entity{
         Vector2i{ gs->mapSize.x / 2, gs->mapSize.y / 2 },
         PLAYER_GLYPH,
         BACKGROUND_COLOR,
         FOREGROUND_ACTIVE_COLOR,
         true,
-        true
-    };
-    gs->entities[1] = Entity{
+        true,
+        true,
+        true,
+        false,
+        5,
+        "Player"
+    });
+
+    generateMap(gs, gs->tiles, gs->mapSize.x, gs->mapSize.y);
+
+    pushEntity(gs, Entity{
         Vector2i{ gs->mapSize.x / 2 + 2, gs->mapSize.y / 2 },
         PLAYER_GLYPH,
         BACKGROUND_COLOR,
         RED,
         true,
-        true
-    };
-    gs->entities[2] = Entity{
+        false,
+        true,
+        true,
+        false,
+        5,
+        "NPC A"
+    });
+    pushEntity(gs, Entity{
         Vector2i{ gs->mapSize.x / 2 + 4, gs->mapSize.y / 2 },
         NPC_GLYPH,
         BACKGROUND_COLOR,
         GREEN,
         true,
-        false
-    };
+        false,
+        true,
+        true,
+        false,
+        5,
+        "NPC B"
+    });
 
-    gs->pendingEntityI = -1;
+    gs->pendingEntityI = 0;
     gs->pendingEntityProcessed = true;
 }
 
 void update(GameState *gs)
 {
+    Entity *standingOverEntity = nullptr;
+    {
+        EntitySearchResult entities = getEntitiesAtPos(gs, gs->entities[1].pos);
+        for (int i = 0; i < entities.count; i++)
+        {
+            Entity *e = entities.entities[i];
+            if (e->canPickUp)
+            {
+                standingOverEntity = e;
+            }
+        }
+    }
+
+    if (!gs->pendingEntityProcessed && standingOverEntity)
+    {
+        if (IsKeyPressed(KEY_E))
+        {
+            printf("Picking up %s\n", standingOverEntity->name);
+            gs->pendingEntityProcessed = true;
+        }
+    }
+
     processEntityTurns(gs);
 
     BeginDrawing();
@@ -288,14 +398,40 @@ void update(GameState *gs)
             }
         }
 
-        for (int i = 0; i < gs->entityCount; i++)
+        for (int drawLayer = 1; drawLayer <= 5; drawLayer++)
         {
-            Entity *entity = &gs->entities[i];
-            drawGlyph(gs, entity->pos, entity->glyphCoord, entity->bgColor, entity->fgColor);
+            for (uint32_t i = 0; i < gs->entityCount; i++)
+            {
+                Entity *entity = &gs->entities[i];
+                if (entity->isVisible && entity->drawLayer == drawLayer)
+                {
+                    drawGlyph(gs, entity->pos, entity->glyphCoord, entity->bgColor, entity->fgColor);
+                }
+            }
         }
 
         float width = GetScreenWidth();
-        DrawText(TextFormat("Turn: %d", gs->currentTurn), width - 100, 10, 24, FOREGROUND_COLOR);
+        DrawText(TextFormat("Turn: %d", gs->currentTurn), width - 100, 10, 24, FOREGROUND_ACTIVE_COLOR);
+
+        DrawText(TextFormat("Player pos: %d, %d", gs->entities[1].pos.x, gs->entities[1].pos.y), width - 200, 40, 24, FOREGROUND_ACTIVE_COLOR);
+        DrawText(TextFormat("Plant pos: %d, %d", gs->entities[2].pos.x, gs->entities[2].pos.y), width - 200, 70, 24, FOREGROUND_ACTIVE_COLOR);
+
+        EntitySearchResult entities = getEntitiesAtPos(gs, gs->entities[1].pos);
+        for (int i = 0; i < entities.count; i++)
+        {
+            Entity *e = entities.entities[i];
+            if (e->canPickUp)
+            {
+                float height = GetScreenHeight();
+                DrawText(TextFormat("Pick up %s", e->name), 10, height - 30, 24, FOREGROUND_ACTIVE_COLOR);
+            }
+        }
+
+        if (standingOverEntity)
+        {
+            float height = GetScreenHeight();
+            DrawText(TextFormat("Pick up %s", standingOverEntity->name), 10, height - 30, 24, FOREGROUND_ACTIVE_COLOR);
+        }
 
     EndDrawing();
 }
