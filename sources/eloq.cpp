@@ -233,14 +233,16 @@ EntitySearchResult getEntitiesAtPos(GameState *gs, Vector2i pos)
     return result;
 }
 
-Entity **getLastInvSlot(Entity *e)
+Entity* getLastInvItem(Entity *e)
 {
-    Entity **invItem = &e->firstInventoryItem;
-    while (*invItem)
+    Entity* prevInvItem = nullptr;
+    Entity* invItem = e->firstInventoryItem;
+    while (invItem)
     {
-        invItem = &(*invItem)->nextEntity;
+        prevInvItem = invItem;
+        invItem = invItem->nextEntity;
     }
-    return invItem;
+    return prevInvItem;
 }
 
 void processEntityTurns(GameState *gs)
@@ -272,11 +274,40 @@ void processEntityTurns(GameState *gs)
             {
                 printf("Picking up %s\n", gs->standingOverEntity->name);
 
-                *getLastInvSlot(pendingEntity) = gs->standingOverEntity;
-                // pendingEntity->firstInventoryItem = ;
+                Entity *lastInvItem = getLastInvItem(pendingEntity);
+                if (lastInvItem)
+                {
+                    lastInvItem->nextEntity = gs->standingOverEntity;
+                    gs->standingOverEntity->prevEntity = lastInvItem;
+                }
+                else
+                {
+                    pendingEntity->firstInventoryItem = gs->standingOverEntity;
+                }
                 gs->standingOverEntity->parentEntity = pendingEntity;
-                gs->standingOverEntity->isActive = false;
                 gs->standingOverEntity->isVisible = false;
+
+                gs->pendingEntityProcessed = true;
+            }
+        }
+
+        if (IsKeyPressed(KEY_G))
+        {
+            if (pendingEntity->firstInventoryItem)
+            {
+                Entity *lastInvItem = getLastInvItem(pendingEntity);
+                if (lastInvItem->prevEntity)
+                {
+                    lastInvItem->prevEntity->nextEntity = nullptr;
+                    lastInvItem->prevEntity = nullptr;
+                }
+                else
+                {
+                    pendingEntity->firstInventoryItem = nullptr;
+                }
+                lastInvItem->parentEntity = nullptr;
+                lastInvItem->pos = pendingEntity->pos;
+                lastInvItem->isVisible = true;
 
                 gs->pendingEntityProcessed = true;
             }

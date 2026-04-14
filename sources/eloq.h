@@ -45,6 +45,7 @@ struct Entity
     int drawLayer;
     char name[ENTITY_NAME_SIZE];
 
+    Entity* prevEntity;
     Entity* nextEntity;
     Entity* parentEntity;
     Entity* firstInventoryItem;
