@@ -45,9 +45,9 @@ struct Entity
     int drawLayer;
     char name[ENTITY_NAME_SIZE];
 
-    uint32_t nextEntity;
-    uint32_t parentEntity;
-    uint32_t firstInventoryItem;
+    Entity* nextEntity;
+    Entity* parentEntity;
+    Entity* firstInventoryItem;
 };
 
 struct GameState
@@ -61,6 +61,7 @@ struct GameState
     int currentTurn;
     uint32_t pendingEntityI;
     bool pendingEntityProcessed;
+    Entity *standingOverEntity;
 };
 
 #define MAX_ENTITY_SEARCH_COUNT 256

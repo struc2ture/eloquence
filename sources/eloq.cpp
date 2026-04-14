@@ -107,23 +107,34 @@ void generateMap(GameState *gs, Tile *tiles, int width, int height)
         };
     }
 
-    int maxHerbsCount = 1;
-    for (int i = 0; i < maxHerbsCount; i++)
-    {
-        pushEntity(gs, Entity{
-            Vector2i{ GetRandomValue(1, width - 2), GetRandomValue(1, height - 2) },
-            HERB_GLYPH,
-            BACKGROUND_COLOR,
-            GREEN,
-            false,
-            false,
-            false,
-            true,
-            true,
-            3,
-            "Jibrus"
-        });
-    }
+    pushEntity(gs, Entity{
+        Vector2i{ GetRandomValue(1, width - 2), GetRandomValue(1, height - 2) },
+        HERB_GLYPH,
+        BACKGROUND_COLOR,
+        GREEN,
+        false,
+        false,
+        false,
+        true,
+        true,
+        3,
+        "Jibrus"
+    });
+
+    pushEntity(gs, Entity{
+        Vector2i{ GetRandomValue(1, width - 2), GetRandomValue(1, height - 2) },
+        HERB_GLYPH,
+        BACKGROUND_COLOR,
+        RED,
+        false,
+        false,
+        false,
+        true,
+        true,
+        3,
+        "Mirronaeus"
+    });
+
 }
 
 inline bool checkValidPosition(GameState *gs, Vector2i p)
@@ -208,13 +219,67 @@ bool checkEntityMovement(GameState *gs, Entity *entity)
     return false;
 }
 
+EntitySearchResult getEntitiesAtPos(GameState *gs, Vector2i pos)
+{
+    EntitySearchResult result;
+    result.count = 0;
+    for (uint32_t i = 1; i < gs->entityCount; i++)
+    {
+        if (v2iEqual(gs->entities[i].pos, pos))
+        {
+            result.entities[result.count++] = &gs->entities[i];
+        }
+    }
+    return result;
+}
+
+Entity **getLastInvSlot(Entity *e)
+{
+    Entity **invItem = &e->firstInventoryItem;
+    while (*invItem)
+    {
+        invItem = &(*invItem)->nextEntity;
+    }
+    return invItem;
+}
+
 void processEntityTurns(GameState *gs)
 {
     if (!gs->pendingEntityProcessed)
     {
-        if (checkEntityMovement(gs, &gs->entities[gs->pendingEntityI]))
+        Entity *pendingEntity = &gs->entities[gs->pendingEntityI];
+        if (checkEntityMovement(gs, pendingEntity))
         {
             gs->pendingEntityProcessed = true;
+        }
+
+        gs->standingOverEntity = nullptr;
+        {
+            EntitySearchResult entities = getEntitiesAtPos(gs, pendingEntity->pos);
+            for (int i = 0; i < entities.count; i++)
+            {
+                Entity *e = entities.entities[i];
+                if (e->parentEntity == nullptr && e->canPickUp)
+                {
+                    gs->standingOverEntity = e;
+                }
+            }
+        }
+
+        if (gs->standingOverEntity)
+        {
+            if (IsKeyPressed(KEY_E))
+            {
+                printf("Picking up %s\n", gs->standingOverEntity->name);
+
+                *getLastInvSlot(pendingEntity) = gs->standingOverEntity;
+                // pendingEntity->firstInventoryItem = ;
+                gs->standingOverEntity->parentEntity = pendingEntity;
+                gs->standingOverEntity->isActive = false;
+                gs->standingOverEntity->isVisible = false;
+
+                gs->pendingEntityProcessed = true;
+            }
         }
     }
 
@@ -288,20 +353,6 @@ void drawGlyph(GameState *gs, Vector2i coord, Vector2i glyphCoord, Color bgColor
     DrawTextureRec(gs->cursesAtlas, getAtlasRect(glyphCoord), pos, fgColor);
 }
 
-EntitySearchResult getEntitiesAtPos(GameState *gs, Vector2i pos)
-{
-    EntitySearchResult result;
-    result.count = 0;
-    for (uint32_t i = 1; i < gs->entityCount; i++)
-    {
-        if (v2iEqual(gs->entities[i].pos, pos))
-        {
-            result.entities[result.count++] = &gs->entities[i];
-        }
-    }
-    return result;
-}
-
 void init(GameState *gs)
 {
     gs->cursesAtlas = LoadTexture(ATLAS_PATH);
@@ -361,28 +412,6 @@ void init(GameState *gs)
 
 void update(GameState *gs)
 {
-    Entity *standingOverEntity = nullptr;
-    {
-        EntitySearchResult entities = getEntitiesAtPos(gs, gs->entities[1].pos);
-        for (int i = 0; i < entities.count; i++)
-        {
-            Entity *e = entities.entities[i];
-            if (e->canPickUp)
-            {
-                standingOverEntity = e;
-            }
-        }
-    }
-
-    if (!gs->pendingEntityProcessed && standingOverEntity)
-    {
-        if (IsKeyPressed(KEY_E))
-        {
-            printf("Picking up %s\n", standingOverEntity->name);
-            gs->pendingEntityProcessed = true;
-        }
-    }
-
     processEntityTurns(gs);
 
     BeginDrawing();
@@ -411,26 +440,30 @@ void update(GameState *gs)
         }
 
         float width = GetScreenWidth();
+        float height = GetScreenHeight();
         DrawText(TextFormat("Turn: %d", gs->currentTurn), width - 100, 10, 24, FOREGROUND_ACTIVE_COLOR);
 
-        DrawText(TextFormat("Player pos: %d, %d", gs->entities[1].pos.x, gs->entities[1].pos.y), width - 200, 40, 24, FOREGROUND_ACTIVE_COLOR);
+        DrawText(TextFormat("Player pos: %d, %d", gs->entities[gs->pendingEntityI].pos.x, gs->entities[gs->pendingEntityI].pos.y), width - 200, 40, 24, FOREGROUND_ACTIVE_COLOR);
         DrawText(TextFormat("Plant pos: %d, %d", gs->entities[2].pos.x, gs->entities[2].pos.y), width - 200, 70, 24, FOREGROUND_ACTIVE_COLOR);
 
-        EntitySearchResult entities = getEntitiesAtPos(gs, gs->entities[1].pos);
-        for (int i = 0; i < entities.count; i++)
+        if (gs->standingOverEntity)
         {
-            Entity *e = entities.entities[i];
-            if (e->canPickUp)
-            {
-                float height = GetScreenHeight();
-                DrawText(TextFormat("Pick up %s", e->name), 10, height - 30, 24, FOREGROUND_ACTIVE_COLOR);
-            }
+            DrawText(TextFormat("Pick up %s", gs->standingOverEntity->name), 10, height - 30, 24, FOREGROUND_ACTIVE_COLOR);
         }
 
-        if (standingOverEntity)
+        // traverse inventory items
         {
-            float height = GetScreenHeight();
-            DrawText(TextFormat("Pick up %s", standingOverEntity->name), 10, height - 30, 24, FOREGROUND_ACTIVE_COLOR);
+            Entity *pendingEntity = &gs->entities[gs->pendingEntityI];
+            Entity *invItem = pendingEntity->firstInventoryItem;
+            float lineHeight = 30.0f;
+            float lineCursor = lineHeight;
+            while (invItem)
+            {
+                DrawText(TextFormat("%s", invItem->name), width - 100, height - lineCursor, 24, FOREGROUND_ACTIVE_COLOR);
+                lineCursor += lineHeight;
+
+                invItem = invItem->nextEntity;
+            }
         }
 
     EndDrawing();
