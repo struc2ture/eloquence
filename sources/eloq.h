@@ -51,6 +51,12 @@ struct Entity
     Entity* firstInventoryItem;
 };
 
+enum class RunState
+{
+    InGame,
+    Inventory
+};
+
 struct GameState
 {
     Texture2D cursesAtlas;
@@ -63,6 +69,7 @@ struct GameState
     uint32_t pendingEntityI;
     bool pendingEntityProcessed;
     Entity *standingOverEntity;
+    RunState runState;
 };
 
 #define MAX_ENTITY_SEARCH_COUNT 256

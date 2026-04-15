@@ -10,6 +10,7 @@ int main(void)
 
     InitWindow(screenWidth, screenHeight, "ELOQ");
     SetTargetFPS(60);
+    SetExitKey(0);
 
     GameState gs{};
     init(&gs);

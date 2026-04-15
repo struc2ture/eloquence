@@ -312,6 +312,11 @@ void processEntityTurns(GameState *gs)
                 gs->pendingEntityProcessed = true;
             }
         }
+
+        if (IsKeyPressed(KEY_I))
+        {
+            gs->runState = RunState::Inventory;
+        }
     }
 
     if (gs->pendingEntityProcessed)
@@ -386,6 +391,8 @@ void drawGlyph(GameState *gs, Vector2i coord, Vector2i glyphCoord, Color bgColor
 
 void init(GameState *gs)
 {
+    gs->runState = RunState::Inventory;
+
     gs->cursesAtlas = LoadTexture(ATLAS_PATH);
     gs->mapSize = defaultMapSize;
     int tileCount = gs->mapSize.x * gs->mapSize.y;
@@ -441,7 +448,7 @@ void init(GameState *gs)
     gs->pendingEntityProcessed = true;
 }
 
-void update(GameState *gs)
+void updateGame(GameState *gs)
 {
     processEntityTurns(gs);
 
@@ -498,4 +505,57 @@ void update(GameState *gs)
         }
 
     EndDrawing();
+}
+
+void updateInventory(GameState *gs)
+{
+    if (IsKeyPressed(KEY_I) || IsKeyPressed(KEY_ESCAPE))
+    {
+        gs->runState = RunState::InGame;
+    }
+
+    BeginDrawing();
+
+        ClearBackground(BACKGROUND_COLOR);
+
+        {
+            float width = GetScreenWidth();
+            float height = GetScreenHeight();
+
+            Entity *pendingEntity = &gs->entities[gs->pendingEntityI];
+            Entity *invItem = pendingEntity->firstInventoryItem;
+            float lineHeight = 30.0f;
+            float x = 10.0f;
+            float lineCursor = 10.0f;
+            while (invItem)
+            {
+                DrawText(TextFormat("%s", invItem->name), x, lineCursor, 24, FOREGROUND_ACTIVE_COLOR);
+                lineCursor += lineHeight;
+
+                invItem = invItem->nextEntity;
+            }
+        }
+
+    EndDrawing();
+}
+
+void update(GameState *gs)
+{
+    switch (gs->runState)
+    {
+        case RunState::InGame:
+        {
+            updateGame(gs);
+        } break;
+
+        case RunState::Inventory:
+        {
+            updateInventory(gs);
+        } break;
+
+        default:
+        {
+            printf("Unknown run state\n");
+        } break;
+    }
 }
